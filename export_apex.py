@@ -58,7 +58,7 @@ class Export_APEX(config.Config):
         group.add_argument('-by',           help = 'Export components changed by developer',                        nargs = '?')
         group.add_argument('-full',         help = 'Export full application export',                                nargs = '?', const = True, default = False)
         group.add_argument('-split',        help = 'Export splitted export (components)',                           nargs = '?', const = True, default = False)
-        group.add_argument('-readable',     help = 'Export readable export',                                        nargs = '?', const = True, default = False)
+        group.add_argument('-readable',     help = 'Export readable export (YAML, or APEXlang on APEX 26.1+)',     nargs = '?', const = True, default = False)
         group.add_argument('-embedded',     help = 'Export Embedded Code report',                                   nargs = '?', const = True, default = False)
         group.add_argument('-rest',         help = 'Export REST services',                                          nargs = '?', const = True, default = False)
         group.add_argument('-files',        help = 'Export application files in binary form',                       nargs = '?', const = True, default = False)
@@ -105,6 +105,7 @@ class Export_APEX(config.Config):
         #
         self.init_config()
         self.conn = conn or self.db_connect(ping_sqlcl = False, silent = silent)
+        self.apex_release = self.get_apex_release()
 
         # make sure we have the temp folder ready
         if not os.path.exists(self.config.sqlcl_root):
@@ -144,6 +145,11 @@ class Export_APEX(config.Config):
         if __name__ != "__main__":  # dont continue if this class is called from other module
             return
         self.parse_actions()
+
+        # cant tell YAML from APEXlang without a known APEX release, so skip rather than guess
+        if self.actions['readable'] and self.apex_release is None:
+            util.print_warning('APEX VERSION UNKNOWN, SKIPPING READABLE EXPORT')
+            self.actions['readable'] = False
 
         # reveal workspaces and apps for specific workspace and group (if provided)
         if self.args.reveal:
@@ -302,6 +308,16 @@ class Export_APEX(config.Config):
 
 
 
+    def get_apex_release(self):
+        # returns (major, minor) tuple, or None if the APEX release couldn't be determined
+        version = (self.conn.versions.get('APEX') or '').strip()
+        try:
+            return tuple(int(x) for x in version.split('.')[:2])
+        except ValueError:
+            return None
+
+
+
     def get_workspaces(self):
         args = {
             'workspace'     : self.arg_workspace,
@@ -440,12 +456,15 @@ class Export_APEX(config.Config):
     def fetch_exported_files(self):
         # get files from collection
         data = self.conn.fetch_assoc(query.apex_export_fetch_files)
+        written = []
         for file in data:
             payload = str(file.clob_content)
             if self.args.release and file.file_name.endswith('.sql'):
                 payload = util.replace(payload, r"p_release=>'\d+.\d+.\d+'", replacement = "p_release=>'" + self.args.release + "'")
             #
             util.write_file(self.config.sqlcl_root + file.file_name, payload = payload)
+            written.append(file.file_name)
+        return written
 
 
 
@@ -554,8 +573,40 @@ class Export_APEX(config.Config):
 
 
     def export_readable(self, app_id):
-        self.conn.execute(query.apex_export_readable, app_id = app_id, originals = 'Y' if self.config.apex_keep_original_id else 'N')
-        self.fetch_exported_files()
+        originals = 'Y' if self.config.apex_keep_original_id else 'N'
+        #
+        # APEX 26.1+ replaces the old YAML dump with the re-installable, LLM-readable APEXlang (.apx) format
+        if self.apex_release and self.apex_release >= (26, 1):
+            self.conn.execute(query.apex_export_apexlang, app_id = app_id, originals = originals)
+            written = self.fetch_exported_files()
+            self.move_apexlang(app_id, written)
+        else:
+            self.conn.execute(query.apex_export_readable, app_id = app_id, originals = originals)
+            self.fetch_exported_files()
+
+
+
+    def move_apexlang(self, app_id, files):
+        # unlike other export types, APEXLANG file names come back with no per-app "f{app_id}/" prefix,
+        # so move_files() would never find them under its app-scoped source_dir; route them explicitly.
+        # left untouched/unrenamed (native APEXlang package layout) so it stays re-installable.
+        target_dir = self.get_root(app_id, 'apexlang/')
+        if os.path.exists(target_dir):
+            util.delete_folder(target_dir)
+        #
+        for name in files:
+            source_file = self.config.sqlcl_root + name
+            target_file = target_dir + name
+            if os.path.exists(source_file):
+                util.move_file(source_file, target_file)
+
+        # remove now-empty leftover folders (files have no "f{app_id}/" prefix, so nothing else cleans these up)
+        for path, _, _ in os.walk(self.config.sqlcl_root, topdown = False):
+            if path.rstrip('/') != self.config.sqlcl_root.rstrip('/') and not os.listdir(path):
+                try:
+                    os.rmdir(path)
+                except OSError:
+                    pass
 
 
 
