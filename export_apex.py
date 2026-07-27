@@ -548,6 +548,7 @@ class Export_APEX(config.Config):
             'with_acl_assignments'      : 'Y' if self.config.apex_with_acl_assignments else 'N',
             'with_audit_info'           : self.config.apex_with_audit_info
         }
+        self.conn.execute(query.apex_export_start, app_id = app_id)
         self.conn.execute(query.apex_export_full, app_id = app_id, **args)
         self.fetch_exported_files()
 
@@ -567,6 +568,7 @@ class Export_APEX(config.Config):
             'with_acl_assignments'      : 'Y' if self.config.apex_with_acl_assignments else 'N',
             'with_audit_info'           : self.config.apex_with_audit_info
         }
+        self.conn.execute(query.apex_export_start, app_id = app_id)
         self.conn.execute(query.apex_export_split, app_id = app_id, **args)
         self.fetch_exported_files()
 
@@ -575,6 +577,7 @@ class Export_APEX(config.Config):
     def export_readable(self, app_id):
         originals = 'Y' if self.config.apex_keep_original_id else 'N'
         #
+        self.conn.execute(query.apex_export_start, app_id = app_id)
         # APEX 26.1+ replaces the old YAML dump with the re-installable, LLM-readable APEXlang (.apx) format
         if self.apex_release and self.apex_release >= (26, 1):
             self.conn.execute(query.apex_export_apexlang, app_id = app_id, originals = originals)
@@ -595,6 +598,10 @@ class Export_APEX(config.Config):
             util.delete_folder(target_dir)
         #
         for name in files:
+            # guard against stale full/split .sql members leaking in from a shared, not-yet-truncated
+            # collection (APEXlang output is exclusively .apx files plus .apex/apexlang.json)
+            if not (name.endswith('.apx') or name.endswith('.json')):
+                continue
             source_file = self.config.sqlcl_root + name
             target_file = target_dir + name
             if os.path.exists(source_file):
@@ -611,6 +618,7 @@ class Export_APEX(config.Config):
 
 
     def export_embedded(self, app_id):
+        self.conn.execute(query.apex_export_start, app_id = app_id)
         self.conn.execute(query.apex_export_embedded, app_id = app_id, originals = 'Y' if self.config.apex_keep_original_id else 'N')
         self.fetch_exported_files()
 
