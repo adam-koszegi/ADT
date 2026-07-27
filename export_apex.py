@@ -598,9 +598,11 @@ class Export_APEX(config.Config):
             util.delete_folder(target_dir)
         #
         for name in files:
-            # guard against stale full/split .sql members leaking in from a shared, not-yet-truncated
-            # collection (APEXlang output is exclusively .apx files plus .apex/apexlang.json)
-            if not (name.endswith('.apx') or name.endswith('.json')):
+            # guard against stale full/split members leaking in from a shared, not-yet-truncated
+            # collection: those always carry the per-app "f{app_id}/" or "f{app_id}." prefix, which
+            # genuine APEXlang output never has (see comment above) - so this can't false-positive on
+            # legitimate non-.apx APEXlang assets like static-file icons/theme css
+            if name.startswith('f{}/'.format(app_id)) or name.startswith('f{}.'.format(app_id)):
                 continue
             source_file = self.config.sqlcl_root + name
             target_file = target_dir + name
