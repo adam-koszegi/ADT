@@ -1237,6 +1237,16 @@ class Patch(config.Config):
         if not os.path.exists(self.patch_folder):
             os.makedirs(self.patch_folder)
         elif not self.patch_dry:
+            # refuse to recreate a patch that already has deploy logs -- silently
+            # wiping the folder would destroy the record of what already ran,
+            # right when a partially-failed retry needs it most
+            existing_logs = util.get_files(self.patch_folder + '/logs_*/*.log')
+            if len(existing_logs) > 0:
+                util.raise_error('PATCH ALREADY HAS DEPLOY LOGS',
+                    'folder: {}'.format(self.patch_folder.replace(self.repo_root + self.config.patch_root, '')),
+                    'recreating it now would silently wipe the record of what already ran',
+                    'delete the patch folder manually first if you really want to start over')
+
             # delete everything in patch folder
             util.delete_folder(self.patch_folder)
 
