@@ -143,6 +143,14 @@ class Deploy(config.Config):
                     success = True
                     break
 
+            # a trailing "-- SUCCESS" prompt is echoed client-side by SQL*Plus/SQLcl
+            # even when the session never connected (PROMPT doesn't need a live
+            # session) or when an earlier statement failed without aborting the
+            # script -- scan the whole output for SQL*Plus/Oracle error signatures
+            # and let any of them override a false "success"
+            if success and re.search(r'(?m)^(SP2-\d{4}:|ORA-\d{5}:|Error starting at line)', output):
+                success = False
+
             # prep results for the template
             results = {
                 'order'     : order + 1,

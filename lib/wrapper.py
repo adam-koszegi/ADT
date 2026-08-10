@@ -263,7 +263,10 @@ class Oracle:
 
         # prepare process for normal platforms
         root    = os.path.abspath(root or self.config.sqlcl_root)
-        request = '{}\n{}\nexit;\n'.format(request_conn, request)
+        # SET DEFINE OFF must run before CONNECT: passwords may contain '&', which
+        # SQLcl otherwise treats as a substitution variable and blocks forever
+        # prompting for a value on a terminal nobody is attached to.
+        request = 'SET DEFINE OFF\n{}\n{}\nexit;\n'.format(request_conn, request)
         process = 'sql /nolog <<EOF\n{}EOF'.format(request)
 
         # for Windows we have to use the temp file
