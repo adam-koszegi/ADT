@@ -1975,6 +1975,13 @@ class Patch(config.Config):
         # shorten target folder for template files
         if self.config.patch_template_dir in target_file:
             target_file     = target_file.replace(self.config.patch_template_dir, self.config.patch_template_snap)
+            if app_id:
+                # per-app templates (apex_init/apex_end) get a distinct snapshot per app_id,
+                # otherwise apps processed later in the same patchset overwrite earlier apps'
+                # {$APEX_APP_ID} substitution and every app ends up @-including the same file
+                dir_part, base_name = os.path.split(target_file)
+                name, ext = os.path.splitext(base_name)
+                target_file = '{}/{}.{}{}'.format(dir_part, name, app_id, ext)
 
         # shorten target folder for script files
         if self.config.patch_scripts_dir in target_file:
