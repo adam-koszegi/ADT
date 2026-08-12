@@ -2136,8 +2136,11 @@ class Patch(config.Config):
             commit = self.all_commits[commit]['id']
 
         # run command line and capture the output, text file is expected
+        # -- quote the path: shell=True splits an unquoted path on spaces,
+        # which git then can't find, and silently returns nothing (no error)
+        payload = None
         try:
-            payload = util.run_command('git show {}:{}'.format(commit, file), silent = True, text = False)
+            payload = util.run_command('git show "{}:{}"'.format(commit, file), silent = True, text = False)
             payload = self.get_simple_text(payload)
         except:
             pass
