@@ -682,23 +682,46 @@ class Export_APEX(config.Config):
         content     = []
         modules     = []
         first       = []
-        append      = False
+        trailer     = []
+        state       = 'preamble'  # preamble -> modules -> trailer -> done
 
-        # split one file into dedicated files for each module
-        for (i, line) in enumerate(lines):
-            module_started = ('ORDS.DEFINE_MODULE' in line)
-            if not append and not module_started:
-                first.append(line)
-            #
-            if module_started:
+        # split one file into dedicated files for each module, and pull the
+        # trailing workspace-level roles/privileges into their own bucket --
+        # they belong to the whole workspace (a privilege can name several
+        # modules), not to whichever module happens to be exported last
+        for line in lines:
+            stripped = line.strip()
+
+            if state == 'done':
+                continue
+
+            # the export always ends in exactly one COMMIT; stop here on the
+            # statement itself, not on a lookahead to the next line -- a
+            # blank line often separates it from the closing END; that follows
+            if stripped == 'COMMIT;':
                 if len(content):
                     modules.append(content)
+                    content = []
+                state = 'done'
+                continue
+
+            if 'ORDS.DEFINE_MODULE' in line:
+                if state == 'modules' and len(content):
+                    modules.append(content)
                 content = []
-                append  = True
-            if line.strip().startswith('COMMIT;') and lines[i + 1].startswith('END;'):
-                append  = False
-            if append:
+                state    = 'modules'
+            elif state == 'modules' and (stripped.startswith('ORDS.CREATE_ROLE') or stripped.startswith('ORDS.DEFINE_PRIVILEGE')):
+                if len(content):
+                    modules.append(content)
+                    content = []
+                state = 'trailer'
+
+            if state == 'preamble':
+                first.append(line)
+            elif state == 'modules':
                 content.append(line.rstrip())
+            elif state == 'trailer':
+                trailer.append(line.rstrip())
         if len(content):
             modules.append(content)
 
@@ -717,21 +740,22 @@ class Export_APEX(config.Config):
                 payload = 'BEGIN\n{}\nEND;\n/\n'.format('\n'.join(list(filter(None, content))))
                 util.write_file(file, payload)
 
-        # schema definition
+        # schema definition -- carries ENABLE_SCHEMA plus the workspace-level
+        # role/privilege trailer (both schema-scoped, not tied to one module).
+        # keep the preamble's own DECLARE/BEGIN verbatim instead of adding
+        # another BEGIN on top: the raw export already opens exactly one
+        # executable block after its DECLARE section.
         if len(modules) > 0:
             file    = self.target_rest + '/__enable_schema.sql'
             content = []
             #
             for line in first:
-                if line.startswith('BEGIN'):
-                    continue
                 if line.startswith('-- Schema:'):
                     line = line.split(' Date:')[0]  # strip date
-                if line.startswith('END;'):
-                    break
                 content.append(line.rstrip())
+            content.extend(trailer)
             #
-            payload = 'BEGIN\n{}\nEND;\n/\n'.format('\n'.join(list(filter(None, content))))
+            payload = '{}\nCOMMIT;\nEND;\n/\n'.format('\n'.join(list(filter(None, content))))
             util.write_file(file, payload)
 
 
