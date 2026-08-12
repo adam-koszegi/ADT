@@ -245,7 +245,7 @@ class Oracle:
             request = '\n'.join(request)
 
         # prepare connection string
-        if 'wallet' in self.tns:
+        if 'wallet' in self.tns and len(self.tns.wallet) > 0:
             request_conn = 'connect -cloudconfig "{}.zip" {}/"{}"@{}\n'.format(*[
                 self.tns.wallet.rstrip('.zip'),
                 self.tns.get('proxy') or self.tns.user,
