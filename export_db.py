@@ -446,7 +446,7 @@ class Export_DB(config.Config):
         # fix terminator
         if not lines[last_line].rstrip().endswith(';'):
             lines[last_line] += ';'
-        if not (object_type in ['TABLE', 'INDEX']):
+        if not (object_type in ['TABLE', 'INDEX', 'SEQUENCE']):
             lines.append('/')
         #
         return lines
