@@ -133,8 +133,13 @@ class Export_DB(config.Config):
                 if not (expecting in self.target_root):
                     continue
                 #
-                if obj.is_object and obj.object_type and not (obj.object_type in ('GRANT',)):
+                if obj.is_object and obj.object_type:
                     obj_code = obj['object_code'].replace('DATA.', 'TABLE.')
+
+                    # skip types we cant verify, otherwise they would be always marked as deleted
+                    if not (obj_code.split('.')[0] in query.object_dependencies_types):
+                        continue
+                    #
                     if not (obj_code in self.dependencies):
                         if not (obj['object_type'] in deleted_obj):
                             deleted_obj[obj['object_type']] = []
