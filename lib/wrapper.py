@@ -286,31 +286,32 @@ class Oracle:
             process
         )
         #
-        result  = util.run_command(command, silent = silent).strip()
-        failed  = 'Error starting at line' in result
-        #
-        if (self.debug or failed):
-            print()
-            util.print_header('REQUEST:')
-            print(command.rstrip())
-            if os.name == 'nt':
-                print(request.rstrip())
-            print()
-            util.print_header('RESULT:')
-            print(result)
-            print()
+        try:
+            result  = util.run_command(command, silent = silent).strip()
+            failed  = 'Error starting at line' in result
             #
-            if failed:
-                error = ''
-                lines = result.splitlines()
-                for i, line in enumerate(lines):
-                    if 'Error report' in line:
-                        error = lines[i + 1]
-                util.raise_error('COMMAND ERROR', error.upper())
-
-        # for Windows remove temp file
-        if os.name == 'nt' and os.path.exists(full_tmp):
-            os.remove(full_tmp)
+            if (self.debug or failed):
+                print()
+                util.print_header('REQUEST:')
+                print(util.mask_passwords(command.rstrip()))
+                if os.name == 'nt':
+                    print(util.mask_passwords(request.rstrip()))
+                print()
+                util.print_header('RESULT:')
+                print(result)
+                print()
+                #
+                if failed:
+                    error = ''
+                    lines = result.splitlines()
+                    for i, line in enumerate(lines):
+                        if 'Error report' in line:
+                            error = lines[i + 1]
+                    util.raise_error('COMMAND ERROR', error.upper())
+        finally:
+            # for Windows remove temp file, it holds the plain password
+            if os.name == 'nt' and os.path.exists(full_tmp):
+                os.remove(full_tmp)
         #
         return result
 

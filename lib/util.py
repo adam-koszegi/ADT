@@ -828,7 +828,7 @@ def run_command(command, stop = True, silent = False, capture_output = True, tex
         try:
             result = subprocess.run(command, shell = True, capture_output = capture_output, text = text)
         except:
-            raise_error('CAPTURE ERROR', [command])
+            raise_error('CAPTURE ERROR', [mask_passwords(command)])
     #
     if result.returncode != 0 and not silent:
         # get all lines below error line
@@ -845,6 +845,14 @@ def run_command(command, stop = True, silent = False, capture_output = True, tex
             print('COMMAND_ERROR: {} {}'.format(result.returncode, result.stderr.strip()))
             #raise_error('COMMAND_ERROR: {} {}'.format(result.returncode, result.stderr.strip()))
     return (result.stdout or '')
+
+
+
+def mask_passwords(payload):
+    # hide the password in SQLcl connect strings, keep user/host/port/service readable
+    payload = re.sub(r'(connect\s[^\n]*?/)"[^"\n]*"(@)',  r'\g<1>"****"\g<2>', payload, flags = re.IGNORECASE)
+    payload = re.sub(r'(connect\s[^\n/]+/)[^\s"@\n]+(@)', r'\g<1>****\g<2>',   payload, flags = re.IGNORECASE)
+    return payload
 
 
 
